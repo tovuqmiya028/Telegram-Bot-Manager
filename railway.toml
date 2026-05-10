@@ -1,0 +1,11 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm install -g pnpm && pnpm install && pnpm --filter @workspace/api-spec run codegen && pnpm --filter @workspace/admin-panel run build && cd artifacts/api-server && npx prisma generate && pnpm run build"
+
+[deploy]
+startCommand = "node artifacts/api-server/dist/index.mjs"
+healthcheckPath = "/api/healthz"
+healthcheckTimeout = 30
+
+[[services]]
+name = "web"

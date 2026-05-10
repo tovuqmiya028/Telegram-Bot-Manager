@@ -1,22 +1,39 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Telegram Userbot Management System API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Admin authentication
+  - name: users
+    description: Bot user management
+  - name: sessions
+    description: Telegram session management
+  - name: tasks
+    description: Scheduled task management
+  - name: contacts
+    description: User contact management
+  - name: autoreplies
+    description: Auto-reply settings
+  - name: logs
+    description: Message send logs
+  - name: broadcast
+    description: Broadcast to all bot users
+  - name: dashboard
+    description: Dashboard stats and overview
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +41,577 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: adminLogin
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginToken"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: adminLogout
+      tags: [auth]
+      summary: Admin logout
+      responses:
+        "200":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getAdminMe
+      tags: [auth]
+      summary: Get current admin session info
+      responses:
+        "200":
+          description: Auth status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthStatus"
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/recent-logs:
+    get:
+      operationId: getDashboardRecentLogs
+      tags: [dashboard]
+      summary: Get recent activity logs for dashboard
+      responses:
+        "200":
+          description: Recent logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Log"
+
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: List all bot users
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BotUser"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a single user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotUser"
+        "404":
+          description: Not found
+
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /users/{id}/block:
+    patch:
+      operationId: blockUser
+      tags: [users]
+      summary: Block a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotUser"
+
+  /users/{id}/unblock:
+    patch:
+      operationId: unblockUser
+      tags: [users]
+      summary: Unblock a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotUser"
+
+  /users/{id}/tasks:
+    get:
+      operationId: getUserTasks
+      tags: [users]
+      summary: Get all tasks for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledTask"
+
+  /users/{id}/contacts:
+    get:
+      operationId: getUserContacts
+      tags: [users]
+      summary: Get all contacts for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+
+  /sessions:
+    get:
+      operationId: getSessions
+      tags: [sessions]
+      summary: List all Telegram sessions
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      tags: [sessions]
+      summary: Get a single session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /sessions/{id}/disconnect:
+    patch:
+      operationId: disconnectSession
+      tags: [sessions]
+      summary: Force disconnect a session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /sessions/{id}/contacts:
+    get:
+      operationId: getSessionContacts
+      tags: [sessions]
+      summary: Get contacts for a session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+
+  /tasks:
+    get:
+      operationId: getTasks
+      tags: [tasks]
+      summary: List all scheduled tasks
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledTask"
+
+  /tasks/{id}:
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a scheduled task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /tasks/{id}/pause:
+    patch:
+      operationId: pauseTask
+      tags: [tasks]
+      summary: Pause a scheduled task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledTask"
+
+  /tasks/{id}/resume:
+    patch:
+      operationId: resumeTask
+      tags: [tasks]
+      summary: Resume a scheduled task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledTask"
+
+  /logs:
+    get:
+      operationId: getLogs
+      tags: [logs]
+      summary: Get all send logs
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Log"
+
+  /broadcast:
+    post:
+      operationId: sendBroadcast
+      tags: [broadcast]
+      summary: Send broadcast message to all bot users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastInput"
+      responses:
+        "200":
+          description: Broadcast result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastResult"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    AdminLoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginToken:
+      type: object
+      required: [success, token]
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+
+    AdminAuthStatus:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated:
+          type: boolean
+        username:
+          type: ["string", "null"]
+
+    DashboardStats:
+      type: object
+      required: [totalUsers, activeSessions, totalTasks, totalLogs, blockedUsers, successfulLogs, failedLogs]
+      properties:
+        totalUsers:
+          type: integer
+        activeSessions:
+          type: integer
+        totalTasks:
+          type: integer
+        totalLogs:
+          type: integer
+        blockedUsers:
+          type: integer
+        successfulLogs:
+          type: integer
+        failedLogs:
+          type: integer
+
+    BotUser:
+      type: object
+      required: [id, telegramId, username, fullName, isBlocked, joinedAt]
+      properties:
+        id:
+          type: integer
+        telegramId:
+          type: string
+        username:
+          type: ["string", "null"]
+        fullName:
+          type: string
+        isBlocked:
+          type: boolean
+        joinedAt:
+          type: string
+        sessionStatus:
+          type: ["string", "null"]
+
+    Session:
+      type: object
+      required: [id, userId, phone, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        phone:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        userFullName:
+          type: ["string", "null"]
+        userUsername:
+          type: ["string", "null"]
+
+    Contact:
+      type: object
+      required: [id, sessionId, telegramId, name]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        telegramId:
+          type: string
+        name:
+          type: string
+        username:
+          type: ["string", "null"]
+
+    ScheduledTask:
+      type: object
+      required: [id, sessionId, messageText, scheduleType, scheduleTime, isActive, sentCount, createdAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        contactId:
+          type: ["integer", "null"]
+        messageText:
+          type: string
+        scheduleType:
+          type: string
+        scheduleTime:
+          type: string
+        scheduleDate:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        lastSent:
+          type: ["string", "null"]
+        sentCount:
+          type: integer
+        createdAt:
+          type: string
+        contactName:
+          type: ["string", "null"]
+        userFullName:
+          type: ["string", "null"]
+
+    Log:
+      type: object
+      required: [id, status, sentAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: ["integer", "null"]
+        contactId:
+          type: ["integer", "null"]
+        taskId:
+          type: ["integer", "null"]
+        status:
+          type: string
+        sentAt:
+          type: string
+        userFullName:
+          type: ["string", "null"]
+        contactName:
+          type: ["string", "null"]
+        messageText:
+          type: ["string", "null"]
+
+    BroadcastInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    BroadcastResult:
+      type: object
+      required: [sent, failed, total]
+      properties:
+        sent:
+          type: integer
+        failed:
+          type: integer
+        total:
+          type: integer

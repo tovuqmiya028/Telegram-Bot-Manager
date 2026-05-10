@@ -1,0 +1,109 @@
+Build a Telegram Userbot management system with 2 roles: Admin and Regular Users.
+
+## How it works:
+
+Regular users interact ONLY through a Telegram bot (commands/buttons).
+Admin manages everything through a web panel.
+
+---
+
+## Telegram Bot (for regular users like Ali)
+
+When Ali opens the bot:
+
+/start → Welcome message + menu buttons:
+  - 🔗 Connect my account
+  - ⏰ Scheduled messages  
+  - 🤖 Auto-reply settings
+  - 📋 My tasks
+
+### Connect my account:
+- Bot asks for phone number
+- Sends OTP to Ali's Telegram
+- Ali enters the code in bot
+- Ali's session is saved and connected
+- Now bot can act as Ali
+
+### Scheduled messages menu:
+- "Add new task" button
+- Bot asks step by step:
+  1. Choose contact (shows Ali's contact list as buttons)
+  2. Write message text
+  3. Choose: Once or Daily
+  4. Choose time (HH:MM)
+  5. If once: choose date
+- Confirm → task saved
+- Ali can see his tasks list, pause or delete them
+
+### Auto-reply settings:
+- Toggle on/off button
+- Set reply text
+- Bot confirms the change
+
+### My tasks:
+- List of Ali's active scheduled tasks
+- Each task has Pause / Delete buttons
+
+---
+
+## Admin Web Panel (React + Tailwind, dark theme, login protected)
+
+### Dashboard:
+- Total users, active sessions, total scheduled tasks
+- Recent logs
+
+### Users page:
+- Table of all registered users (name, username, phone, joined date, session status)
+- View each user's tasks and contacts
+- Block / unblock user
+- Delete user session
+
+### All Sessions page:
+- All connected Telegram accounts
+- Status: active / expired / banned
+- See contacts list per session
+- Force disconnect a session
+
+### All Scheduled Tasks page:
+- All tasks from all users
+- Filter by user
+- Pause / delete any task
+
+### Broadcast page:
+- Admin sends message via bot to all bot users (not as userbot, as the Telegram bot itself)
+- Write message → send to all
+
+### Logs page:
+- All sent messages: who sent, to whom, when, success or fail
+
+---
+
+## Database (SQLite + Prisma):
+- users: id, telegram_id, username, full_name, is_blocked, joined_at
+- sessions: id, user_id (FK), phone, session_string, is_active
+- contacts: id, session_id, telegram_id, name, username
+- scheduled_tasks: id, session_id, contact_id, message_text,
+  schedule_type (once/daily), schedule_time, schedule_date,
+  is_active, last_sent, sent_count
+- auto_replies: id, session_id, reply_text, is_enabled
+- logs: id, session_id, contact_id, task_id, status, sent_at
+
+## Scheduler (backend):
+- Every minute check active scheduled_tasks
+- Send via correct session (as that user's account)
+- Log result
+
+## Environment variables:
+- BOT_TOKEN (the Telegram bot token)
+- ADMIN_TELEGRAM_ID (admin's telegram id, gets full access)
+- ADMIN_PANEL_USERNAME
+- ADMIN_PANEL_PASSWORD
+- TIMEZONE (Asia/Tashkent)
+
+## Tech stack:
+- Frontend: React + Tailwind CSS
+- Backend: Node.js + Express
+- Telegram Bot: Grammy or Telegraf
+- Userbot: GramJS (for connecting user accounts)
+- Database: SQLite + Prisma
+- Scheduler: node-cron

@@ -1,0 +1,102 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  telegramId String   @unique @map("telegram_id")
+  username   String?
+  fullName   String   @map("full_name")
+  isBlocked  Boolean  @default(false) @map("is_blocked")
+  joinedAt   DateTime @default(now()) @map("joined_at")
+
+  sessions Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @map("user_id")
+  phone         String
+  sessionString String   @default("") @map("session_string")
+  isActive      Boolean  @default(false) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts       Contact[]
+  scheduledTasks ScheduledTask[]
+  autoReply      AutoReply?
+  logs           Log[]
+
+  @@map("sessions")
+}
+
+model Contact {
+  id         Int     @id @default(autoincrement())
+  sessionId  Int     @map("session_id")
+  telegramId String  @map("telegram_id")
+  name       String
+  username   String?
+
+  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  scheduledTasks ScheduledTask[]
+  logs           Log[]
+
+  @@map("contacts")
+}
+
+model ScheduledTask {
+  id           Int       @id @default(autoincrement())
+  sessionId    Int       @map("session_id")
+  contactId    Int?      @map("contact_id")
+  messageText  String    @map("message_text")
+  scheduleType String    @map("schedule_type")
+  scheduleTime String    @map("schedule_time")
+  scheduleDate String?   @map("schedule_date")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastSent     DateTime? @map("last_sent")
+  sentCount    Int       @default(0) @map("sent_count")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  session Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  logs    Log[]
+
+  @@map("scheduled_tasks")
+}
+
+model AutoReply {
+  id        Int     @id @default(autoincrement())
+  sessionId Int     @unique @map("session_id")
+  replyText String  @map("reply_text")
+  isEnabled Boolean @default(false) @map("is_enabled")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("auto_replies")
+}
+
+model Log {
+  id        Int      @id @default(autoincrement())
+  sessionId Int?     @map("session_id")
+  contactId Int?     @map("contact_id")
+  taskId    Int?     @map("task_id")
+  status    String
+  sentAt    DateTime @default(now()) @map("sent_at")
+  message   String?
+
+  session Session?       @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  contact Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  task    ScheduledTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@map("logs")
+}

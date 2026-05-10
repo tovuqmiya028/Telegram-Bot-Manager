@@ -29,8 +29,14 @@ async function buildAll() {
     // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
     external: [
       "*.node",
+      "*.wasm",
       "sharp",
       "better-sqlite3",
+      "telegram",
+      "grammy",
+      "@prisma/client-runtime-utils",
+      "prisma",
+      "pg",
       "sqlite3",
       "canvas",
       "bcrypt",
