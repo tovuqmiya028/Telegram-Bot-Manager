@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAdmin } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { requestCode, verifyCode } from "../lib/gramjs.js";
 
 const router: IRouter = Router();
 
@@ -44,6 +45,67 @@ router.get("/sessions/:id/contacts", requireAdmin, async (req, res): Promise<voi
 
   const contacts = await prisma.contact.findMany({ where: { sessionId: id } });
   res.json(contacts.map((c) => ({ id: c.id, sessionId: c.sessionId, telegramId: c.telegramId, name: c.name, username: c.username })));
+});
+
+router.post("/sessions/request-code", requireAdmin, async (req, res): Promise<void> => {
+  const { phone } = req.body as { phone?: string };
+  if (!phone) { res.status(400).json({ error: "phone is required" }); return; }
+
+  try {
+    const result = await requestCode(phone.trim());
+    res.json({ phone: phone.trim(), phoneCodeHash: result.phoneCodeHash });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? "Failed to send code" });
+  }
+});
+
+router.post("/sessions/verify-code", requireAdmin, async (req, res): Promise<void> => {
+  const { phone, code, phoneCodeHash } = req.body as { phone?: string; code?: string; phoneCodeHash?: string };
+  if (!phone || !code || !phoneCodeHash) {
+    res.status(400).json({ error: "phone, code, and phoneCodeHash are required" });
+    return;
+  }
+
+  try {
+    const { sessionString, firstName, lastName, username, telegramId } = await verifyCode(
+      phone.trim(), code.trim(), phoneCodeHash,
+    );
+
+    let user = await prisma.user.findFirst({ where: { telegramId } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          telegramId,
+          fullName: [firstName, lastName].filter(Boolean).join(" ") || phone,
+          username: username || null,
+          isBlocked: false,
+          joinedAt: new Date(),
+        },
+      });
+    }
+
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        phone: phone.trim(),
+        sessionString,
+        isActive: true,
+      },
+      include: { user: true },
+    });
+
+    res.json({
+      id: session.id,
+      userId: session.userId,
+      phone: session.phone,
+      isActive: session.isActive,
+      createdAt: session.createdAt.toISOString(),
+      userFullName: session.user?.fullName ?? null,
+      userUsername: session.user?.username ?? null,
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message ?? "Verification failed" });
+  }
 });
 
 export default router;

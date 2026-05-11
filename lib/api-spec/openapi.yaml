@@ -317,6 +317,48 @@ paths:
                 items:
                   $ref: "#/components/schemas/Contact"
 
+  /sessions/request-code:
+    post:
+      operationId: requestSessionCode
+      tags: [sessions]
+      summary: Send Telegram verification code to phone number via GramJS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionRequestCode"
+      responses:
+        "200":
+          description: Code sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionCodeSent"
+        "400":
+          description: Bad request
+
+  /sessions/verify-code:
+    post:
+      operationId: verifySessionCode
+      tags: [sessions]
+      summary: Verify Telegram code and create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionVerifyCode"
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: Invalid code or expired
+
   /tasks:
     get:
       operationId: getTasks
@@ -597,6 +639,33 @@ components:
           type: ["string", "null"]
         messageText:
           type: ["string", "null"]
+
+    SessionRequestCode:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+
+    SessionCodeSent:
+      type: object
+      required: [phone, phoneCodeHash]
+      properties:
+        phone:
+          type: string
+        phoneCodeHash:
+          type: string
+
+    SessionVerifyCode:
+      type: object
+      required: [phone, code, phoneCodeHash]
+      properties:
+        phone:
+          type: string
+        code:
+          type: string
+        phoneCodeHash:
+          type: string
 
     BroadcastInput:
       type: object

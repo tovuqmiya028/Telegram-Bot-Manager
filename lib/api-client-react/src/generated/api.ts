@@ -31,6 +31,9 @@ import type {
   LoginToken,
   ScheduledTask,
   Session,
+  SessionCodeSent,
+  SessionRequestCode,
+  SessionVerifyCode,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -1408,6 +1411,178 @@ export function useGetSessionContacts<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Send Telegram verification code to phone number via GramJS
+ */
+export const getRequestSessionCodeUrl = () => {
+  return `/api/sessions/request-code`;
+};
+
+export const requestSessionCode = async (
+  sessionRequestCode: SessionRequestCode,
+  options?: RequestInit,
+): Promise<SessionCodeSent> => {
+  return customFetch<SessionCodeSent>(getRequestSessionCodeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(sessionRequestCode),
+  });
+};
+
+export const getRequestSessionCodeMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestSessionCode>>,
+    TError,
+    { data: BodyType<SessionRequestCode> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestSessionCode>>,
+  TError,
+  { data: BodyType<SessionRequestCode> },
+  TContext
+> => {
+  const mutationKey = ["requestSessionCode"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestSessionCode>>,
+    { data: BodyType<SessionRequestCode> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestSessionCode(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestSessionCodeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestSessionCode>>
+>;
+export type RequestSessionCodeMutationBody = BodyType<SessionRequestCode>;
+export type RequestSessionCodeMutationError = ErrorType<void>;
+
+/**
+ * @summary Send Telegram verification code to phone number via GramJS
+ */
+export const useRequestSessionCode = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestSessionCode>>,
+    TError,
+    { data: BodyType<SessionRequestCode> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestSessionCode>>,
+  TError,
+  { data: BodyType<SessionRequestCode> },
+  TContext
+> => {
+  return useMutation(getRequestSessionCodeMutationOptions(options));
+};
+
+/**
+ * @summary Verify Telegram code and create session
+ */
+export const getVerifySessionCodeUrl = () => {
+  return `/api/sessions/verify-code`;
+};
+
+export const verifySessionCode = async (
+  sessionVerifyCode: SessionVerifyCode,
+  options?: RequestInit,
+): Promise<Session> => {
+  return customFetch<Session>(getVerifySessionCodeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(sessionVerifyCode),
+  });
+};
+
+export const getVerifySessionCodeMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifySessionCode>>,
+    TError,
+    { data: BodyType<SessionVerifyCode> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verifySessionCode>>,
+  TError,
+  { data: BodyType<SessionVerifyCode> },
+  TContext
+> => {
+  const mutationKey = ["verifySessionCode"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verifySessionCode>>,
+    { data: BodyType<SessionVerifyCode> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return verifySessionCode(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerifySessionCodeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verifySessionCode>>
+>;
+export type VerifySessionCodeMutationBody = BodyType<SessionVerifyCode>;
+export type VerifySessionCodeMutationError = ErrorType<void>;
+
+/**
+ * @summary Verify Telegram code and create session
+ */
+export const useVerifySessionCode = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifySessionCode>>,
+    TError,
+    { data: BodyType<SessionVerifyCode> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verifySessionCode>>,
+  TError,
+  { data: BodyType<SessionVerifyCode> },
+  TContext
+> => {
+  return useMutation(getVerifySessionCodeMutationOptions(options));
+};
 
 /**
  * @summary List all scheduled tasks

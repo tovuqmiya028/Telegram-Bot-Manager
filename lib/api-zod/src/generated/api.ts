@@ -245,6 +245,37 @@ export const GetSessionContactsResponse = zod.array(
 );
 
 /**
+ * @summary Send Telegram verification code to phone number via GramJS
+ */
+export const RequestSessionCodeBody = zod.object({
+  phone: zod.string(),
+});
+
+export const RequestSessionCodeResponse = zod.object({
+  phone: zod.string(),
+  phoneCodeHash: zod.string(),
+});
+
+/**
+ * @summary Verify Telegram code and create session
+ */
+export const VerifySessionCodeBody = zod.object({
+  phone: zod.string(),
+  code: zod.string(),
+  phoneCodeHash: zod.string(),
+});
+
+export const VerifySessionCodeResponse = zod.object({
+  id: zod.number(),
+  userId: zod.number(),
+  phone: zod.string(),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+  userFullName: zod.string().nullish(),
+  userUsername: zod.string().nullish(),
+});
+
+/**
  * @summary List all scheduled tasks
  */
 export const GetTasksQueryParams = zod.object({

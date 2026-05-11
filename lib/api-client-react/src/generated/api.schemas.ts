@@ -107,6 +107,21 @@ export interface Log {
   messageText?: string | null;
 }
 
+export interface SessionRequestCode {
+  phone: string;
+}
+
+export interface SessionCodeSent {
+  phone: string;
+  phoneCodeHash: string;
+}
+
+export interface SessionVerifyCode {
+  phone: string;
+  code: string;
+  phoneCodeHash: string;
+}
+
 export interface BroadcastInput {
   message: string;
 }
