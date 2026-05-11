@@ -255,7 +255,7 @@ bot.on("message:text", async (ctx: MyContext) => {
         settings: new Api.CodeSettings({}),
       }));
       ctx.session.phoneCodeHash = result.phoneCodeHash;
-      activeClients.set(-user.id, client);
+      activeClients.set(-user.id, client); // Store client temporarily with a negative ID
       await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting:");
     } catch (err) {
       logger.error({ err }, "Failed to send OTP");
@@ -281,7 +281,7 @@ bot.on("message:text", async (ctx: MyContext) => {
       const sessionString = tempClient.session.save() as unknown as string;
 
       const dbSession = await prisma.session.upsert({
-        where: { userId_phone: { userId: user.id, phone } } as Parameters<typeof prisma.session.upsert>[0]["where"],
+        where: { userId_phone: { userId: user.id, phone } } as any,
         create: { userId: user.id, phone, sessionString, isActive: true },
         update: { sessionString, isActive: true },
       });
@@ -292,9 +292,48 @@ bot.on("message:text", async (ctx: MyContext) => {
       logger.info({ userId: user.id, sessionId: dbSession.id }, "Session connected");
       await ctx.reply("✅ Akkaunt muvaffaqiyatli ulandi!");
       ctx.session.step = undefined;
+    } catch (err: any) {
+      if (err.errorMessage === "SESSION_PASSWORD_NEEDED") {
+        logger.info({ userId: user.id }, "2FA password needed");
+        ctx.session.step = "awaiting_password";
+        await ctx.reply("🔒 Sizning akkauntingizda ikki bosqichli tekshiruv (2FA) yoqilgan. Iltimos, maxfiy so'zni (parolni) kiriting:");
+      } else {
+        logger.error({ err }, "Failed to sign in");
+        await ctx.reply("❌ Noto'g'ri kod. Qaytadan urinib ko'ring:");
+      }
+    }
+    return;
+  }
+
+  if (step === "awaiting_password") {
+    const password = text;
+    const phone = ctx.session.phone!;
+    const tempClient = activeClients.get(-user.id);
+
+    if (!tempClient) {
+      await ctx.reply("❌ Sessiya muddati o'tdi. Qaytadan boshlang.");
+      ctx.session.step = undefined;
+      return;
+    }
+
+    try {
+      await tempClient.invoke(new Api.auth.CheckPassword({ password }));
+      const sessionString = tempClient.session.save() as unknown as string;
+      const dbSession = await prisma.session.upsert({
+        where: { userId_phone: { userId: user.id, phone } } as any,
+        create: { userId: user.id, phone, sessionString, isActive: true },
+        update: { sessionString, isActive: true },
+      });
+
+      activeClients.delete(-user.id);
+      activeClients.set(user.id, tempClient);
+
+      logger.info({ userId: user.id, sessionId: dbSession.id }, "Session connected with 2FA");
+      await ctx.reply("✅ Akkaunt muvaffaqiyatli ulandi!");
+      ctx.session.step = undefined;
     } catch (err) {
-      logger.error({ err }, "Failed to sign in");
-      await ctx.reply("❌ Noto'g'ri kod. Qaytadan urinib ko'ring:");
+      logger.error({ err }, "Failed to sign in with 2FA password");
+      await ctx.reply("❌ Parol noto'g'ri. Iltimos, qaytadan kiriting:");
     }
     return;
   }
