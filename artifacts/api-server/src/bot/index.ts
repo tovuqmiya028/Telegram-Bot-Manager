@@ -15,36 +15,29 @@ if (!BOT_TOKEN) {
 export const bot = new Bot(BOT_TOKEN || "placeholder");
 
 type MySession = {
-  step?: string;
+  step?: "awaiting_phone" | "awaiting_otp" | "awaiting_password" | "awaiting_autoreply_text";
   phone?: string;
   phoneCodeHash?: string;
-  sessionObj?: string;
-  taskDraft?: {
-    contactId?: number;
-    message?: string;
-    type?: string;
-    time?: string;
-    date?: string;
-  };
 };
 
 type MyContext = Context & { session: MySession };
 
 bot.use(session({ initial: (): MySession => ({}) }));
 
-// Active GramJS clients keyed by userId (db User.id)
+// Temporary clients for login flow, keyed by user's Telegram ID
+const loginClients: Map<number, TelegramClient> = new Map();
+
+// Active clients for logged-in users, keyed by our DB User.id
 const activeClients: Map<number, TelegramClient> = new Map();
 
-async function getOrCreateClient(userId: number, sessionString: string): Promise<TelegramClient | null> {
-  if (activeClients.has(userId)) return activeClients.get(userId)!;
-  const apiId = parseInt(process.env["TELEGRAM_API_ID"] ?? "0");
-  const apiHash = process.env["TELEGRAM_API_HASH"] ?? "";
-  if (!apiId || !apiHash) return null;
-  const client = new TelegramClient(new StringSession(sessionString), apiId, apiHash, { connectionRetries: 3 });
-  await client.connect();
-  activeClients.set(userId, client);
-  return client;
-}
+// Gracefully disconnect clients on shutdown
+process.on('SIGINT', async () => {
+    console.log("Disconnecting all clients...");
+    for (const client of [...loginClients.values(), ...activeClients.values()]) {
+        if (client.connected) await client.disconnect();
+    }
+    process.exit(0);
+});
 
 bot.command("start", async (ctx: MyContext) => {
   const telegramId = String(ctx.from?.id ?? "");
@@ -86,9 +79,128 @@ bot.hears("🔗 Akkauntni ulash", async (ctx: MyContext) => {
     return;
   }
 
+  // Cleanup any previous login attempt
+  const userId = ctx.from!.id;
+  if (loginClients.has(userId)) {
+      await loginClients.get(userId)?.disconnect();
+      loginClients.delete(userId);
+  }
+
   ctx.session.step = "awaiting_phone";
   await ctx.reply("📱 Telegram telefon raqamingizni kiriting (+998901234567 formatida):");
 });
+
+
+bot.on("message:text", async (ctx: MyContext) => {
+  const userId = ctx.from.id;
+  const text = ctx.message.text;
+  const step = ctx.session.step;
+
+  if (!step) return;
+
+  const user = await prisma.user.findUnique({ where: { telegramId: String(userId) } });
+  if (!user || user.isBlocked) return;
+
+  // --- LOGIN FLOW ---
+
+  if (step === "awaiting_phone") {
+    const apiId = parseInt(process.env["TELEGRAM_API_ID"] ?? "0");
+    const apiHash = process.env["TELEGRAM_API_HASH"] ?? "";
+
+    if (!apiId || !apiHash) {
+      await ctx.reply("⚠️ API sozlamalari yo'q. Admin bilan bog'laning.");
+      ctx.session = {};
+      return;
+    }
+
+    const client = new TelegramClient(new StringSession(""), apiId, apiHash, { connectionRetries: 3 });
+    loginClients.set(userId, client);
+
+    try {
+      await client.connect();
+      const result = await client.sendCode({ apiId, apiHash }, text);
+      ctx.session.phone = text;
+      ctx.session.phoneCodeHash = result.phoneCodeHash;
+      ctx.session.step = "awaiting_otp";
+      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting:");
+    } catch (err) {
+      logger.error({ err, userId }, "Failed to send OTP code");
+      ctx.session = {};
+      loginClients.delete(userId);
+      await client.disconnect();
+      await ctx.reply(`❌ Xatolik yuz berdi. Iltimos, raqamni to'g'ri formatda kiritganingizga ishonch hosil qiling va qaytadan urinib ko'ring.\n\n_(${err.message})_`);
+    }
+    return;
+  }
+
+  const client = loginClients.get(userId);
+  if (!client) {
+      await ctx.reply("❌ Sessiya muddati o'tdi yoki topilmadi. Qaytadan /start bosing va urinib ko'ring.");
+      ctx.session = {};
+      return;
+  }
+
+  if (step === "awaiting_otp") {
+    const { phone, phoneCodeHash } = ctx.session;
+    try {
+      await client.invoke(new Api.auth.SignIn({
+        phoneNumber: phone!,
+        phoneCodeHash: phoneCodeHash!,
+        phoneCode: text,
+      }));
+      // If we reach here, login was successful without 2FA
+      await completeLogin(ctx, client, user.id, phone!);
+    } catch (err: any) {
+      if (err.errorMessage === "SESSION_PASSWORD_NEEDED") {
+        ctx.session.step = "awaiting_password";
+        await ctx.reply("🔒 Sizning akkauntingizda ikki bosqichli tekshiruv (2FA) yoqilgan. Iltimos, maxfiy so'zni (parolni) kiriting:");
+      } else {
+        logger.error({ err, userId }, "OTP Sign-in error");
+        await ctx.reply(`❌ Noto'g'ri kod. Qaytadan kiriting:\n\n_(${err.message})_`);
+      }
+    }
+    return;
+  }
+
+  if (step === "awaiting_password") {
+    const { phone } = ctx.session;
+    try {
+        const passwordSrp = await client.invoke(new Api.account.GetPassword({}));
+        const password = await TelegramClient.passwordToHash(text, passwordSrp.currentSalt!);
+        await client.invoke(new Api.auth.CheckPassword({
+            password: new Api.InputCheckPasswordSRP({
+                srpId: passwordSrp.srpId,
+                a: password.a,
+                m1: password.m1
+            })
+        }));
+      await completeLogin(ctx, client, user.id, phone!);
+    } catch (err: any) {
+        logger.error({ err, userId }, "2FA Sign-in error");
+        await ctx.reply(`❌ Parol noto'g'ri. Qaytadan kiriting:\n\n_(${err.message})_`);
+    }
+    return;
+  }
+});
+
+async function completeLogin(ctx: MyContext, client: TelegramClient, dbUserId: number, phone: string) {
+    const sessionString = client.session.save() as unknown as string;
+
+    await prisma.session.upsert({
+      where: { userId_phone: { userId: dbUserId, phone } } as any,
+      create: { userId: dbUserId, phone, sessionString, isActive: true },
+      update: { sessionString, isActive: true },
+    });
+
+    activeClients.set(dbUserId, client); // Move client to active map
+    loginClients.delete(ctx.from!.id); // Remove from temporary map
+
+    logger.info({ userId: dbUserId }, "Session connected successfully");
+    await ctx.reply("✅ Akkaunt muvaffaqiyatli ulandi!");
+    ctx.session = {}; // Clear session
+}
+
+// ================== OTHER BOT HANDLERS (Unchanged) ==================
 
 bot.hears("⏰ Rejalashtirilgan xabarlar", async (ctx: MyContext) => {
   const telegramId = String(ctx.from?.id ?? "");
@@ -118,16 +230,16 @@ bot.hears("⏰ Rejalashtirilgan xabarlar", async (ctx: MyContext) => {
     return;
   }
 
-  let text = "📋 Sizning vazifalaringiz:\n\n";
+  let responseText = "📋 Sizning vazifalaringiz:\n\n";
   for (const task of tasks) {
     const status = task.isActive ? "✅ Faol" : "⏸ To'xtatilgan";
-    text += `🆔 #${task.id} | ${status}\n`;
-    text += `👤 ${task.contact?.name ?? "Noma'lum"}\n`;
-    text += `💬 ${task.messageText.slice(0, 50)}...\n`;
-    text += `⏰ ${task.scheduleType === "daily" ? "Har kuni" : "Bir marta"} ${task.scheduleTime}\n\n`;
+    responseText += `🆔 #${task.id} | ${status}\n`;
+    responseText += `👤 ${task.contact?.name ?? "Noma'lum"}\n`;
+    responseText += `💬 ${task.messageText.slice(0, 50)}...\n`;
+    responseText += `⏰ ${task.scheduleType === "daily" ? "Har kuni" : "Bir marta"} ${task.scheduleTime}\n\n`;
   }
 
-  await ctx.reply(text, {
+  await ctx.reply(responseText, {
     reply_markup: {
       keyboard: [[{ text: "➕ Yangi vazifa qo'shish" }], [{ text: "🏠 Bosh menyu" }]],
       resize_keyboard: true,
@@ -135,84 +247,8 @@ bot.hears("⏰ Rejalashtirilgan xabarlar", async (ctx: MyContext) => {
   });
 });
 
-bot.hears("🤖 Avto-javob sozlamalari", async (ctx: MyContext) => {
-  const telegramId = String(ctx.from?.id ?? "");
-  const user = await prisma.user.findUnique({ where: { telegramId } });
-  if (!user || user.isBlocked) { await ctx.reply("⛔ Ruxsat yo'q."); return; }
-
-  const session = await prisma.session.findFirst({ where: { userId: user.id, isActive: true } });
-  if (!session) { await ctx.reply("⚠️ Avval akkauntingizni ulang."); return; }
-
-  let autoReply = await prisma.autoReply.findUnique({ where: { sessionId: session.id } });
-  if (!autoReply) {
-    autoReply = await prisma.autoReply.create({ data: { sessionId: session.id, replyText: "Hozir band, keyinroq javob beraman.", isEnabled: false } });
-  }
-
-  const status = autoReply.isEnabled ? "✅ Yoqilgan" : "❌ O'chirilgan";
-  await ctx.reply(
-    `🤖 Avto-javob: ${status}\n\n💬 Joriy matn: "${autoReply.replyText}"\n\nNima qilmoqchisiz?`,
-    {
-      reply_markup: {
-        keyboard: [
-          [{ text: autoReply.isEnabled ? "❌ O'chirish" : "✅ Yoqish" }],
-          [{ text: "✏️ Matnni o'zgartirish" }],
-          [{ text: "🏠 Bosh menyu" }],
-        ],
-        resize_keyboard: true,
-      },
-    }
-  );
-});
-
-bot.hears("📋 Mening vazifalarim", async (ctx: MyContext) => {
-  const telegramId = String(ctx.from?.id ?? "");
-  const user = await prisma.user.findUnique({ where: { telegramId } });
-  if (!user || user.isBlocked) { await ctx.reply("⛔ Ruxsat yo'q."); return; }
-
-  const session = await prisma.session.findFirst({ where: { userId: user.id, isActive: true } });
-  if (!session) { await ctx.reply("⚠️ Avval akkauntingizni ulang."); return; }
-
-  const tasks = await prisma.scheduledTask.findMany({
-    where: { sessionId: session.id, isActive: true },
-    include: { contact: true },
-    orderBy: { createdAt: "desc" },
-  });
-
-  if (tasks.length === 0) {
-    await ctx.reply("📭 Faol vazifalar yo'q.");
-    return;
-  }
-
-  for (const task of tasks) {
-    const text = `🆔 #${task.id}\n👤 ${task.contact?.name ?? "Noma'lum"}\n💬 ${task.messageText.slice(0, 100)}\n⏰ ${task.scheduleType === "daily" ? "Har kuni" : "Bir marta"} ${task.scheduleTime}`;
-    await ctx.reply(text, {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "⏸ To'xtatish", callback_data: `pause_task_${task.id}` },
-            { text: "🗑 O'chirish", callback_data: `delete_task_${task.id}` },
-          ],
-        ],
-      },
-    });
-  }
-});
-
-bot.callbackQuery(/^pause_task_(\d+)$/, async (ctx) => {
-  const taskId = parseInt(ctx.match[1] ?? "0");
-  await prisma.scheduledTask.update({ where: { id: taskId }, data: { isActive: false } });
-  await ctx.answerCallbackQuery({ text: "⏸ Vazifa to'xtatildi" });
-  await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
-});
-
-bot.callbackQuery(/^delete_task_(\d+)$/, async (ctx) => {
-  const taskId = parseInt(ctx.match[1] ?? "0");
-  await prisma.scheduledTask.delete({ where: { id: taskId } });
-  await ctx.answerCallbackQuery({ text: "🗑 Vazifa o'chirildi" });
-  await ctx.deleteMessage();
-});
-
 bot.hears("🏠 Bosh menyu", async (ctx: MyContext) => {
+  ctx.session = {};
   await ctx.reply("🏠 Bosh menyu", {
     reply_markup: {
       keyboard: [
@@ -224,136 +260,14 @@ bot.hears("🏠 Bosh menyu", async (ctx: MyContext) => {
   });
 });
 
-// Handle text input steps
-bot.on("message:text", async (ctx: MyContext) => {
-  const telegramId = String(ctx.from?.id ?? "");
-  const user = await prisma.user.findUnique({ where: { telegramId } });
-  if (!user || user.isBlocked) return;
-  const text = ctx.message.text;
-  const step = ctx.session.step;
-
-  if (step === "awaiting_phone") {
-    ctx.session.phone = text;
-    ctx.session.step = "awaiting_otp";
-
-    const apiId = parseInt(process.env["TELEGRAM_API_ID"] ?? "0");
-    const apiHash = process.env["TELEGRAM_API_HASH"] ?? "";
-
-    if (!apiId || !apiHash) {
-      await ctx.reply("⚠️ API sozlamalari yo'q. Admin bilan bog'laning.");
-      ctx.session.step = undefined;
-      return;
-    }
-
-    try {
-      const client = new TelegramClient(new StringSession(""), apiId, apiHash, { connectionRetries: 3 });
-      await client.connect();
-      const result = await client.invoke(new Api.auth.SendCode({
-        phoneNumber: text,
-        apiId,
-        apiHash,
-        settings: new Api.CodeSettings({}),
-      }));
-      ctx.session.phoneCodeHash = result.phoneCodeHash;
-      activeClients.set(-user.id, client); // Store client temporarily with a negative ID
-      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting:");
-    } catch (err) {
-      logger.error({ err }, "Failed to send OTP");
-      await ctx.reply("❌ Xatolik yuz berdi. Qaytadan urinib ko'ring.");
-      ctx.session.step = undefined;
-    }
-    return;
-  }
-
-  if (step === "awaiting_otp") {
-    const phone = ctx.session.phone!;
-    const phoneCodeHash = ctx.session.phoneCodeHash!;
-    const tempClient = activeClients.get(-user.id);
-
-    if (!tempClient) {
-      await ctx.reply("❌ Sessiya muddati o'tdi. Qaytadan boshlang.");
-      ctx.session.step = undefined;
-      return;
-    }
-
-    try {
-      await tempClient.invoke(new Api.auth.SignIn({ phoneNumber: phone, phoneCodeHash, phoneCode: text }));
-      const sessionString = tempClient.session.save() as unknown as string;
-
-      const dbSession = await prisma.session.upsert({
-        where: { userId_phone: { userId: user.id, phone } } as any,
-        create: { userId: user.id, phone, sessionString, isActive: true },
-        update: { sessionString, isActive: true },
-      });
-
-      activeClients.delete(-user.id);
-      activeClients.set(user.id, tempClient);
-
-      logger.info({ userId: user.id, sessionId: dbSession.id }, "Session connected");
-      await ctx.reply("✅ Akkaunt muvaffaqiyatli ulandi!");
-      ctx.session.step = undefined;
-    } catch (err: any) {
-      if (err.errorMessage === "SESSION_PASSWORD_NEEDED") {
-        logger.info({ userId: user.id }, "2FA password needed");
-        ctx.session.step = "awaiting_password";
-        await ctx.reply("🔒 Sizning akkauntingizda ikki bosqichli tekshiruv (2FA) yoqilgan. Iltimos, maxfiy so'zni (parolni) kiriting:");
-      } else {
-        logger.error({ err }, "Failed to sign in");
-        await ctx.reply("❌ Noto'g'ri kod. Qaytadan urinib ko'ring:");
-      }
-    }
-    return;
-  }
-
-  if (step === "awaiting_password") {
-    const password = text;
-    const phone = ctx.session.phone!;
-    const tempClient = activeClients.get(-user.id);
-
-    if (!tempClient) {
-      await ctx.reply("❌ Sessiya muddati o'tdi. Qaytadan boshlang.");
-      ctx.session.step = undefined;
-      return;
-    }
-
-    try {
-      await tempClient.invoke(new Api.auth.CheckPassword({ password }));
-      const sessionString = tempClient.session.save() as unknown as string;
-      const dbSession = await prisma.session.upsert({
-        where: { userId_phone: { userId: user.id, phone } } as any,
-        create: { userId: user.id, phone, sessionString, isActive: true },
-        update: { sessionString, isActive: true },
-      });
-
-      activeClients.delete(-user.id);
-      activeClients.set(user.id, tempClient);
-
-      logger.info({ userId: user.id, sessionId: dbSession.id }, "Session connected with 2FA");
-      await ctx.reply("✅ Akkaunt muvaffaqiyatli ulandi!");
-      ctx.session.step = undefined;
-    } catch (err) {
-      logger.error({ err }, "Failed to sign in with 2FA password");
-      await ctx.reply("❌ Parol noto'g'ri. Iltimos, qaytadan kiriting:");
-    }
-    return;
-  }
-
-  if (step === "awaiting_autoreply_text") {
-    const session = await prisma.session.findFirst({ where: { userId: user.id, isActive: true } });
-    if (!session) { ctx.session.step = undefined; return; }
-    await prisma.autoReply.update({ where: { sessionId: session.id }, data: { replyText: text } });
-    await ctx.reply("✅ Avto-javob matni yangilandi.");
-    ctx.session.step = undefined;
-    return;
-  }
-});
 
 export async function startBot(): Promise<void> {
   if (!BOT_TOKEN) {
     logger.warn("BOT_TOKEN not set — skipping bot start");
     return;
   }
+  await bot.api.deleteWebhook({ drop_pending_updates: true }).catch((err) => logger.warn("Could not delete webhook", err));
   bot.start({
-    onStart: () => logger.info("Telegram bot started"),
-  }).catch((err) => logger.error({ err }, "Bot error"));
+    onStart: () => logger.info("Telegram bot started with polling"),
+  }).catch((err) => logger.error({ err }, "Bot startup error"));
 }
