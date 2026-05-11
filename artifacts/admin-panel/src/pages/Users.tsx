@@ -172,8 +172,8 @@ export default function Users() {
 }
 
 function UserDetailDrawer({ userId, open, onOpenChange }: { userId: number; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { data: tasks, isLoading: tasksLoading } = useGetUserTasks(userId, { query: { enabled: !!userId } });
-  const { data: contacts, isLoading: contactsLoading } = useGetUserContacts(userId, { query: { enabled: !!userId } });
+  const { data: tasks, isLoading: tasksLoading } = useGetUserTasks(userId);
+  const { data: contacts, isLoading: contactsLoading } = useGetUserContacts(userId);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

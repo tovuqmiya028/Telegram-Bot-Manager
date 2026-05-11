@@ -68,6 +68,17 @@ export interface Contact {
   username?: string | null;
 }
 
+export interface CreateTaskInput {
+  sessionId: number;
+  /** @nullable */
+  contactId?: number | null;
+  messageText: string;
+  scheduleType: string;
+  scheduleTime: string;
+  /** @nullable */
+  scheduleDate?: string | null;
+}
+
 export interface ScheduledTask {
   id: number;
   sessionId: number;
@@ -137,6 +148,10 @@ export type GetTasksParams = {
    * @nullable
    */
   userId?: number | null;
+};
+
+export type ClearLogs200 = {
+  deleted: number;
 };
 
 export type GetLogsParams = {

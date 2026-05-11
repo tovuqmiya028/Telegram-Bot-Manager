@@ -1,13 +1,37 @@
-import { useGetDashboardStats, useGetDashboardRecentLogs } from "@workspace/api-client-react";
+import {
+  useGetDashboardStats,
+  useGetDashboardRecentLogs,
+  useClearLogs,
+  getGetDashboardRecentLogsQueryKey,
+  getGetDashboardStatsQueryKey,
+} from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Smartphone, Clock, ListOrdered, CheckCircle2, XCircle, ShieldAlert } from "lucide-react";
+import { Users, Smartphone, Clock, ListOrdered, CheckCircle2, XCircle, ShieldAlert, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: logs, isLoading: logsLoading } = useGetDashboardRecentLogs();
+  const clearLogsMutation = useClearLogs();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const handleClearLogs = async () => {
+    if (!confirm("Barcha loglarni o'chirib tashlamoqchimisiz?")) return;
+    try {
+      const result = await clearLogsMutation.mutateAsync();
+      toast({ title: `${result.deleted} ta log o'chirildi` });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardRecentLogsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+    } catch {
+      toast({ variant: "destructive", title: "Xatolik yuz berdi" });
+    }
+  };
 
   const statCards = [
     { title: "Total Users", value: stats?.totalUsers, icon: Users, color: "text-blue-500" },
@@ -47,8 +71,18 @@ export default function Dashboard() {
       </div>
 
       <Card className="border-border/50 bg-card/50">
-        <CardHeader>
-          <CardTitle>Recent Activity Stream</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>So'nggi faoliyat</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 text-muted-foreground hover:text-destructive"
+            onClick={handleClearLogs}
+            disabled={clearLogsMutation.isPending || !logs?.length}
+          >
+            <Trash2 className="h-4 w-4" />
+            Tozalash
+          </Button>
         </CardHeader>
         <CardContent>
           {logsLoading ? (
@@ -58,29 +92,29 @@ export default function Dashboard() {
               ))}
             </div>
           ) : logs && logs.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {logs.map(log => (
-                <div key={log.id} className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-background/50">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={log.status === "SUCCESS" ? "default" : "destructive"} className="text-[10px] h-5">
+                <div key={log.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-background/50">
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant={log.status?.toLowerCase() === "success" ? "default" : "destructive"} className="text-[10px] h-5">
                         {log.status}
                       </Badge>
-                      <span className="font-semibold text-sm">{log.userFullName}</span>
+                      <span className="font-semibold text-sm">{log.userFullName ?? "—"}</span>
                       <span className="text-muted-foreground text-xs">→</span>
-                      <span className="font-medium text-sm">{log.contactName}</span>
+                      <span className="font-medium text-sm">{log.contactName ?? "—"}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-1">{log.messageText}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-1">{log.messageText ?? "—"}</p>
                   </div>
-                  <div className="text-xs text-muted-foreground font-mono">
-                    {format(new Date(log.sentAt), "MMM d, HH:mm:ss")}
+                  <div className="text-xs text-muted-foreground font-mono shrink-0 ml-4">
+                    {format(new Date(log.sentAt), "dd.MM HH:mm")}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No recent activity recorded.
+              Hech qanday faoliyat qayd etilmagan.
             </div>
           )}
         </CardContent>

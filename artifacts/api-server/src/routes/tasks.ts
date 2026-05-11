@@ -30,6 +30,37 @@ router.get("/tasks", requireAdmin, async (req, res): Promise<void> => {
   })));
 });
 
+router.post("/tasks", requireAdmin, async (req, res): Promise<void> => {
+  const { sessionId, contactId, messageText, scheduleType, scheduleTime, scheduleDate } =
+    req.body as {
+      sessionId?: number; contactId?: number; messageText?: string;
+      scheduleType?: string; scheduleTime?: string; scheduleDate?: string;
+    };
+
+  if (!sessionId || !messageText || !scheduleType || !scheduleTime) {
+    res.status(400).json({ error: "sessionId, messageText, scheduleType, scheduleTime are required" });
+    return;
+  }
+
+  const t = await prisma.scheduledTask.create({
+    data: {
+      sessionId, contactId: contactId ?? null,
+      messageText, scheduleType, scheduleTime,
+      scheduleDate: scheduleDate ?? null,
+      isActive: true, sentCount: 0,
+    },
+    include: { contact: true, session: { include: { user: true } } },
+  });
+
+  res.status(201).json({
+    id: t.id, sessionId: t.sessionId, contactId: t.contactId, messageText: t.messageText,
+    scheduleType: t.scheduleType, scheduleTime: t.scheduleTime, scheduleDate: t.scheduleDate,
+    isActive: t.isActive, lastSent: null, sentCount: t.sentCount,
+    createdAt: t.createdAt.toISOString(), contactName: t.contact?.name ?? null,
+    userFullName: t.session?.user?.fullName ?? null,
+  });
+});
+
 router.delete("/tasks/:id", requireAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw ?? "", 10);

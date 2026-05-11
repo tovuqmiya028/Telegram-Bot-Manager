@@ -38,4 +38,9 @@ router.get("/logs", requireAdmin, async (req, res): Promise<void> => {
   })));
 });
 
+router.delete("/logs/clear", requireAdmin, async (_req, res): Promise<void> => {
+  const result = await prisma.log.deleteMany({});
+  res.json({ deleted: result.count });
+});
+
 export default router;

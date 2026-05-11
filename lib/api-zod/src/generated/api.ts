@@ -276,6 +276,18 @@ export const VerifySessionCodeResponse = zod.object({
 });
 
 /**
+ * @summary Create a new scheduled task
+ */
+export const CreateTaskBody = zod.object({
+  sessionId: zod.number(),
+  contactId: zod.number().nullish(),
+  messageText: zod.string(),
+  scheduleType: zod.string(),
+  scheduleTime: zod.string(),
+  scheduleDate: zod.string().nullish(),
+});
+
+/**
  * @summary List all scheduled tasks
  */
 export const GetTasksQueryParams = zod.object({
@@ -350,6 +362,13 @@ export const ResumeTaskResponse = zod.object({
   createdAt: zod.string(),
   contactName: zod.string().nullish(),
   userFullName: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete all logs
+ */
+export const ClearLogsResponse = zod.object({
+  deleted: zod.number(),
 });
 
 /**

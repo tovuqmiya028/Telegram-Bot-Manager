@@ -33,11 +33,7 @@ setAuthTokenGetter(() => {
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [, setLocation] = useLocation();
-  const { data, isLoading } = useGetAdminMe({
-    query: {
-      retry: false,
-    },
-  });
+  const { data, isLoading } = useGetAdminMe();
 
   useEffect(() => {
     if (!isLoading && (!data || !data.authenticated)) {

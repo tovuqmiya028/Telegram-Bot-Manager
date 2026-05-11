@@ -1,23 +1,39 @@
 import { useState } from "react";
-import { useGetLogs } from "@workspace/api-client-react";
+import { useGetLogs, useClearLogs, getGetLogsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, XCircle, Search, RefreshCw, ListOrdered } from "lucide-react";
+import { CheckCircle2, XCircle, Search, RefreshCw, ListOrdered, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Logs() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "fail">("all");
   const { data: logs, isLoading, refetch } = useGetLogs();
+  const clearLogsMutation = useClearLogs();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const handleClearLogs = async () => {
+    if (!confirm("Barcha loglarni o'chirib tashlamoqchimisiz? Bu amalni qaytarib bo'lmaydi.")) return;
+    try {
+      const result = await clearLogsMutation.mutateAsync();
+      toast({ title: `${result.deleted} ta log o'chirildi` });
+      queryClient.invalidateQueries({ queryKey: getGetLogsQueryKey() });
+    } catch {
+      toast({ variant: "destructive", title: "Xatolik yuz berdi" });
+    }
+  };
 
   const filtered = (logs ?? []).filter((log) => {
     const matchStatus = statusFilter === "all" || log.status.toLowerCase() === statusFilter;
     const matchSearch =
       !search ||
-      log.message?.toLowerCase().includes(search.toLowerCase()) ||
+      log.messageText?.toLowerCase().includes(search.toLowerCase()) ||
       String(log.contactId).includes(search);
     return matchStatus && matchSearch;
   });
@@ -29,9 +45,20 @@ export default function Logs() {
           <h1 className="text-3xl font-bold tracking-tight">Message Logs</h1>
           <p className="text-muted-foreground mt-1">Delivery history for all scheduled sends.</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-2" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4" /> Yangilash
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+            onClick={handleClearLogs}
+            disabled={clearLogsMutation.isPending || !logs?.length}
+          >
+            <Trash2 className="h-4 w-4" /> Loglarni tozalash
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-3 items-center">
@@ -90,7 +117,7 @@ export default function Logs() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm line-clamp-1 text-foreground">{log.message ?? "—"}</p>
+                    <p className="text-sm line-clamp-1 text-foreground">{log.messageText ?? "—"}</p>
                     <p className="text-xs text-muted-foreground font-mono">
                       Session #{log.sessionId} → Contact #{log.contactId}
                       {log.taskId ? ` · Task #${log.taskId}` : ""}

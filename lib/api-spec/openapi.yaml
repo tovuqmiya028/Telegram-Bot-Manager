@@ -360,6 +360,23 @@ paths:
           description: Invalid code or expired
 
   /tasks:
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a new scheduled task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskInput"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledTask"
     get:
       operationId: getTasks
       tags: [tasks]
@@ -432,6 +449,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScheduledTask"
+
+  /logs/clear:
+    delete:
+      operationId: clearLogs
+      tags: [logs]
+      summary: Delete all logs
+      responses:
+        "200":
+          description: Logs cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: integer
 
   /logs:
     get:
@@ -584,6 +618,23 @@ components:
         name:
           type: string
         username:
+          type: ["string", "null"]
+
+    CreateTaskInput:
+      type: object
+      required: [sessionId, messageText, scheduleType, scheduleTime]
+      properties:
+        sessionId:
+          type: integer
+        contactId:
+          type: ["integer", "null"]
+        messageText:
+          type: string
+        scheduleType:
+          type: string
+        scheduleTime:
+          type: string
+        scheduleDate:
           type: ["string", "null"]
 
     ScheduledTask:

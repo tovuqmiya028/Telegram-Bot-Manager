@@ -22,7 +22,9 @@ import type {
   BotUser,
   BroadcastInput,
   BroadcastResult,
+  ClearLogs200,
   Contact,
+  CreateTaskInput,
   DashboardStats,
   GetLogsParams,
   GetTasksParams,
@@ -1585,6 +1587,92 @@ export const useVerifySessionCode = <
 };
 
 /**
+ * @summary Create a new scheduled task
+ */
+export const getCreateTaskUrl = () => {
+  return `/api/tasks`;
+};
+
+export const createTask = async (
+  createTaskInput: CreateTaskInput,
+  options?: RequestInit,
+): Promise<ScheduledTask> => {
+  return customFetch<ScheduledTask>(getCreateTaskUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createTaskInput),
+  });
+};
+
+export const getCreateTaskMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTask>>,
+    TError,
+    { data: BodyType<CreateTaskInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createTask>>,
+  TError,
+  { data: BodyType<CreateTaskInput> },
+  TContext
+> => {
+  const mutationKey = ["createTask"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createTask>>,
+    { data: BodyType<CreateTaskInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createTask(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateTaskMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createTask>>
+>;
+export type CreateTaskMutationBody = BodyType<CreateTaskInput>;
+export type CreateTaskMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a new scheduled task
+ */
+export const useCreateTask = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTask>>,
+    TError,
+    { data: BodyType<CreateTaskInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createTask>>,
+  TError,
+  { data: BodyType<CreateTaskInput> },
+  TContext
+> => {
+  return useMutation(getCreateTaskMutationOptions(options));
+};
+
+/**
  * @summary List all scheduled tasks
  */
 export const getGetTasksUrl = (params?: GetTasksParams) => {
@@ -1928,6 +2016,87 @@ export const useResumeTask = <
   TContext
 > => {
   return useMutation(getResumeTaskMutationOptions(options));
+};
+
+/**
+ * @summary Delete all logs
+ */
+export const getClearLogsUrl = () => {
+  return `/api/logs/clear`;
+};
+
+export const clearLogs = async (
+  options?: RequestInit,
+): Promise<ClearLogs200> => {
+  return customFetch<ClearLogs200>(getClearLogsUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getClearLogsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearLogs>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearLogs>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["clearLogs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearLogs>>,
+    void
+  > = () => {
+    return clearLogs(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearLogsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearLogs>>
+>;
+
+export type ClearLogsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete all logs
+ */
+export const useClearLogs = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearLogs>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearLogs>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getClearLogsMutationOptions(options));
 };
 
 /**

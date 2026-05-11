@@ -36,8 +36,6 @@ export default function Broadcast() {
       const res = await sendBroadcast({
         data: {
           message,
-          sessionId: sessionId !== "all" ? Number(sessionId) : undefined,
-          onlyActive,
         },
       });
       setResult({ sent: res.sent ?? 0, failed: res.failed ?? 0 });
