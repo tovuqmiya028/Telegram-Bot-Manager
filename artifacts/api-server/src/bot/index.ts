@@ -128,7 +128,7 @@ bot.on("message:text", async (ctx: MyContext) => {
       ctx.session.phone = text;
       ctx.session.phoneCodeHash = result.phoneCodeHash;
       ctx.session.step = "awaiting_otp";
-      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting. Kodni `12345` yoki `12-34-5` kabi formatlarda yuborishingiz mumkin.\n\n(Jarayonni bekor qilish uchun /cancel deb yozing)");
+      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting.\n\n(Jarayonni bekor qilish uchun /cancel deb yozing)");
     } catch (err: any) {
       logger.error({ err, userId }, "Failed to send OTP code");
       await cleanupLoginAttempt(userId);
@@ -146,13 +146,13 @@ bot.on("message:text", async (ctx: MyContext) => {
   }
 
   if (step === "awaiting_otp") {
-    const sanitizedCode = text.replace(/\D/g, ''); // Raqamlardan boshqa hamma narsani o'chirish
+    const sanitizedCode = text.replace(/\D/g, '').split('').join(' ');
     const { phone, phoneCodeHash } = ctx.session;
     try {
       await client.invoke(new Api.auth.SignIn({
         phoneNumber: phone!,
         phoneCodeHash: phoneCodeHash!,
-        phoneCode: sanitizedCode, // Tozalangan kodni ishlatish
+        phoneCode: sanitizedCode,
       }));
       await completeLogin(ctx, client, user.id, phone!);
     } catch (err: any) {
