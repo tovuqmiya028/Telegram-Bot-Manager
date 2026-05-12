@@ -23,13 +23,9 @@ type MyContext = Context & { session: MySession };
 
 bot.use(session({ initial: (): MySession => ({}) }));
 
-// Temporary clients for login flow, keyed by user's Telegram ID
 const loginClients: Map<number, TelegramClient> = new Map();
-
-// Active clients for logged-in users, keyed by our DB User.id
 const activeClients: Map<number, TelegramClient> = new Map();
 
-// Gracefully disconnect clients on shutdown
 process.on('SIGINT', async () => {
     logger.info("SIGINT received. Disconnecting all clients...");
     for (const client of [...loginClients.values(), ...activeClients.values()]) {
@@ -42,13 +38,16 @@ async function cleanupLoginAttempt(userId: number) {
     const client = loginClients.get(userId);
     if (client) {
         logger.info({ userId }, "Cleaning up previous login attempt.");
-        await client.disconnect().catch(err => logger.warn({ err }, "Error during client disconnect on cleanup."));
+        if (client.connected) {
+            await client.disconnect().catch(err => logger.warn({ err, userId }, "Error during client disconnect on cleanup."));
+        }
         loginClients.delete(userId);
     }
 }
 
 bot.command("start", async (ctx: MyContext) => {
   await cleanupLoginAttempt(ctx.from!.id);
+  ctx.session = {};
   const telegramId = String(ctx.from?.id ?? "");
   const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "User";
   const username = ctx.from?.username ?? null;
@@ -63,7 +62,6 @@ bot.command("start", async (ctx: MyContext) => {
     return;
   }
 
-  ctx.session = {};
   await ctx.reply(
     `👋 Salom, ${fullName}! Telegram Userbot boshqaruv botiga xush kelibsiz.\n\nNima qilmoqchisiz?`,
     {
@@ -101,7 +99,6 @@ bot.hears("🔗 Akkauntni ulash", async (ctx: MyContext) => {
   await ctx.reply("📱 Telegram telefon raqamingizni kiriting (+998901234567 formatida):");
 });
 
-
 bot.on("message:text", async (ctx: MyContext) => {
   const userId = ctx.from.id;
   const text = ctx.message.text;
@@ -112,8 +109,6 @@ bot.on("message:text", async (ctx: MyContext) => {
   const user = await prisma.user.findUnique({ where: { telegramId: String(userId) } });
   if (!user || user.isBlocked) return;
     
-  // --- LOGIN FLOW ---
-
   if (step === "awaiting_phone") {
     const apiId = parseInt(process.env["TELEGRAM_API_ID"] ?? "0");
     const apiHash = process.env["TELEGRAM_API_HASH"] ?? "";
@@ -133,7 +128,7 @@ bot.on("message:text", async (ctx: MyContext) => {
       ctx.session.phone = text;
       ctx.session.phoneCodeHash = result.phoneCodeHash;
       ctx.session.step = "awaiting_otp";
-      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting (Yoki /cancel buyrug'i bilan bekor qiling):");
+      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting. Kodni `12345` yoki `12-34-5` kabi formatlarda yuborishingiz mumkin.\n\n(Jarayonni bekor qilish uchun /cancel deb yozing)");
     } catch (err: any) {
       logger.error({ err, userId }, "Failed to send OTP code");
       await cleanupLoginAttempt(userId);
@@ -151,23 +146,26 @@ bot.on("message:text", async (ctx: MyContext) => {
   }
 
   if (step === "awaiting_otp") {
+    const sanitizedCode = text.replace(/\D/g, ''); // Raqamlardan boshqa hamma narsani o'chirish
     const { phone, phoneCodeHash } = ctx.session;
     try {
-      // This is a dummy invoke to check if session is still alive
-      await client.invoke(new Api.updates.GetState());
       await client.invoke(new Api.auth.SignIn({
         phoneNumber: phone!,
         phoneCodeHash: phoneCodeHash!,
-        phoneCode: text,
+        phoneCode: sanitizedCode, // Tozalangan kodni ishlatish
       }));
-      // If we reach here, login was successful without 2FA
       await completeLogin(ctx, client, user.id, phone!);
     } catch (err: any) {
       if (err.errorMessage === "SESSION_PASSWORD_NEEDED") {
         ctx.session.step = "awaiting_password";
         await ctx.reply("🔒 Sizning akkauntingizda ikki bosqichli tekshiruv (2FA) yoqilgan. Iltimos, maxfiy so'zni (parolni) kiriting:");
+      } else if (err.errorMessage === "AUTH_KEY_UNREGISTERED") {
+        logger.error({ err, userId }, "Fatal session error during OTP sign-in.");
+        await cleanupLoginAttempt(userId);
+        ctx.session = {};
+        await ctx.reply("❌ Jiddiy xatolik: Sessiya kaliti yaroqsiz. Iltimos, /start bosing va jarayonni boshidan boshlang.");
       } else {
-        logger.error({ err, userId }, "OTP Sign-in error");
+        logger.warn({ err, userId }, "OTP Sign-in error");
         await ctx.reply(`❌ Noto'g'ri kod. Qaytadan kiriting:\n\n_(${err.message})_`);
       }
     }
@@ -180,16 +178,18 @@ bot.on("message:text", async (ctx: MyContext) => {
         const passwordSrp = await client.invoke(new Api.account.GetPassword({}));
         const password = await TelegramClient.passwordToHash(text, passwordSrp.currentSalt!);
         await client.invoke(new Api.auth.CheckPassword({
-            password: new Api.InputCheckPasswordSRP({
-                srpId: passwordSrp.srpId,
-                a: password.a,
-                m1: password.m1
-            })
+            password: new Api.InputCheckPasswordSRP({ srpId: passwordSrp.srpId, a: password.a, m1: password.m1 })
         }));
       await completeLogin(ctx, client, user.id, phone!);
     } catch (err: any) {
         logger.error({ err, userId }, "2FA Sign-in error");
-        await ctx.reply(`❌ Parol noto'g'ri. Qaytadan kiriting:\n\n_(${err.message})_`);
+        if (err.errorMessage === "AUTH_KEY_UNREGISTERED") {
+            await cleanupLoginAttempt(userId);
+            ctx.session = {};
+            await ctx.reply("❌ Jiddiy xatolik: Sessiya kaliti yaroqsiz. Iltimos, /start bosing va jarayonni boshidan boshlang.");
+        } else {
+            await ctx.reply(`❌ Parol noto'g'ri. Qaytadan kiriting:\n\n_(${err.message})_`);
+        }
     }
     return;
   }
@@ -204,19 +204,15 @@ async function completeLogin(ctx: MyContext, client: TelegramClient, dbUserId: n
       update: { sessionString, isActive: true },
     });
 
-    activeClients.set(dbUserId, client); // Move client to active map
-    loginClients.delete(ctx.from!.id); // Remove from temporary map
+    activeClients.set(dbUserId, client);
+    loginClients.delete(ctx.from!.id);
     
     logger.info({ userId: dbUserId }, "Session connected successfully");
     await ctx.reply("✅ Akkaunt muvaffaqiyatli ulandi!");
-    ctx.session = {}; // Clear session
+    ctx.session = {};
 }
 
-// ================== OTHER BOT HANDLERS (Unchanged, so they are omitted for brevity) ==================
-
-bot.hears("⏰ Rejalashtirilgan xabarlar", async (ctx: MyContext) => {
-  // Implementation remains the same
-});
+bot.hears("⏰ Rejalashtirilgan xabarlar", async (ctx: MyContext) => {});
 
 bot.hears("🏠 Bosh menyu", async (ctx: MyContext) => {
   ctx.session = {};
