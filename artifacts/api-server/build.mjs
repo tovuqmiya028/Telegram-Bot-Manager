@@ -32,7 +32,6 @@ async function buildAll() {
       "*.wasm",
       "sharp",
       "better-sqlite3",
-      "telegram",
       "grammy",
       "@prisma/client-runtime-utils",
       "prisma",
