@@ -1,9 +1,8 @@
 import { Bot, session, type Context } from "grammy";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
-import { TelegramClient as GramJSClient } from "telegram";
+import * as Telegram from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
-import { Api } from "telegram/tl/index.js";
 
 const BOT_TOKEN = process.env["BOT_TOKEN"] ?? "";
 
@@ -23,8 +22,8 @@ type MyContext = Context & { session: MySession };
 
 bot.use(session({ initial: (): MySession => ({}) }));
 
-const loginClients: Map<number, GramJSClient> = new Map();
-const activeClients: Map<number, GramJSClient> = new Map();
+const loginClients: Map<number, Telegram.TelegramClient> = new Map();
+const activeClients: Map<number, Telegram.TelegramClient> = new Map();
 
 process.on('SIGINT', async () => {
     logger.info("SIGINT received. Disconnecting all clients...");
@@ -119,7 +118,7 @@ bot.on("message:text", async (ctx: MyContext) => {
       return;
     }
 
-    const client = new GramJSClient(new StringSession(""), apiId, apiHash, { connectionRetries: 3 });
+    const client = new Telegram.TelegramClient(new StringSession(""), apiId, apiHash, { connectionRetries: 3 });
     loginClients.set(userId, client);
 
     try {
@@ -146,13 +145,13 @@ bot.on("message:text", async (ctx: MyContext) => {
   }
 
   if (step === "awaiting_otp") {
-    const sanitizedCode = text.replace(/\D/g, ''); // Raqamlardan boshqa hamma narsani o'chirish
+    const sanitizedCode = text.replace(/\D/g, '');
     const { phone, phoneCodeHash } = ctx.session;
     try {
-      await client.invoke(new Api.auth.SignIn({
+      await client.invoke(new Telegram.Api.auth.SignIn({
         phoneNumber: phone!,
         phoneCodeHash: phoneCodeHash!,
-        phoneCode: sanitizedCode, // Tozalangan kodni ishlatish
+        phoneCode: sanitizedCode,
       }));
       await completeLogin(ctx, client, user.id, phone!);
     } catch (err: any) {
@@ -175,10 +174,10 @@ bot.on("message:text", async (ctx: MyContext) => {
   if (step === "awaiting_password") {
     const { phone } = ctx.session;
     try {
-        const passwordSrp = await client.invoke(new Api.account.GetPassword({}));
-        const password = await GramJSClient.passwordToHash(text, passwordSrp.currentSalt!);
-        await client.invoke(new Api.auth.CheckPassword({
-            password: new Api.InputCheckPasswordSRP({ srpId: passwordSrp.srpId, a: password.a, m1: password.m1 })
+        const passwordSrp = await client.invoke(new Telegram.Api.account.GetPassword({}));
+        const password = await Telegram.TelegramClient.passwordToHash(text, passwordSrp.currentSalt!);
+        await client.invoke(new Telegram.Api.auth.CheckPassword({
+            password: new Telegram.Api.InputCheckPasswordSRP({ srpId: passwordSrp.srpId, a: password.a, m1: password.m1 })
         }));
       await completeLogin(ctx, client, user.id, phone!);
     } catch (err: any) {
@@ -195,7 +194,7 @@ bot.on("message:text", async (ctx: MyContext) => {
   }
 });
 
-async function completeLogin(ctx: MyContext, client: GramJSClient, dbUserId: number, phone: string) {
+async function completeLogin(ctx: MyContext, client: Telegram.TelegramClient, dbUserId: number, phone: string) {
     const sessionString = client.session.save() as unknown as string;
 
     await prisma.session.upsert({
