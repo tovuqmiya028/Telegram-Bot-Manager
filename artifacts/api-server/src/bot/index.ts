@@ -1,7 +1,7 @@
 import { Bot, session, type Context } from "grammy";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
-import { GramClient, hashPassword } from "./telegram_client.js";
+import { GramClient, hashPassword } from "./telegram_client";
 import { StringSession } from "telegram/sessions/index.js";
 import { Api } from "telegram/tl/index.js";
 
