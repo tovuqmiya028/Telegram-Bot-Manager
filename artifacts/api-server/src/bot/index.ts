@@ -127,7 +127,7 @@ bot.on("message:text", async (ctx: MyContext) => {
       ctx.session.phone = text;
       ctx.session.phoneCodeHash = result.phoneCodeHash;
       ctx.session.step = "awaiting_otp";
-      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting. Kodni '1 2 3 4 5 6' kabi formatlarda yuboring !\n\n(Jarayonni bekor qilish uchun /cancel deb yozing)");
+      await ctx.reply("📨 SMS kodi yuborildi! Iltimos, kodni kiriting. Kodni `12345` yoki `12-34-5` kabi formatlarda yuborishingiz mumkin.\n\n(Jarayonni bekor qilish uchun /cancel deb yozing)");
     } catch (err: any) {
       logger.error({ err, userId }, "Failed to send OTP code");
       await cleanupLoginAttempt(userId);
@@ -175,7 +175,9 @@ bot.on("message:text", async (ctx: MyContext) => {
     const { phone } = ctx.session;
     try {
         const passwordSrp = await client.invoke(new Telegram.Api.account.GetPassword({}));
-        const password = await (client.constructor as typeof Telegram.TelegramClient).passwordToHash(text, passwordSrp.currentSalt!);
+        // esbuild "tree-shaking" muammosini aylanib o'tish uchun hiyla
+        const pswdToHash = Telegram.TelegramClient.passwordToHash;
+        const password = await pswdToHash(text, passwordSrp.currentSalt!);
         await client.invoke(new Telegram.Api.auth.CheckPassword({
             password: new Telegram.Api.InputCheckPasswordSRP({ srpId: passwordSrp.srpId, a: password.a, m1: password.m1 })
         }));
